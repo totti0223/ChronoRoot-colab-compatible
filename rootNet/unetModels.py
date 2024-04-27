@@ -6,7 +6,7 @@ Created on Fri Mar 29 14:55:32 2019
 @author: ngaggion
 """
 import tensorflow as tf
-
+import onnxruntime as ort
 from .modelUtils import conv2d, upsample2d, dropout, resUnit
 from .modelUtils import pixel_wise_softmax
 
@@ -100,6 +100,13 @@ class ResUNetDS(object):
   def restore(self, sess, ckpt_path):
     self.saver.restore(sess, ckpt_path)
 
+class ResUNetonnx:
+  def __init__(self,path="ResUNetDS.onnx"):
+    self.path = path
+    self.providers = ['CUDAExecutionProvider']
+    self.ort_session = ort.InferenceSession(classifier_path, providers=providers)
+    self.input_names = [input.name for input in ort_session.get_inputs()]
+    self.output_names = [output.name for output in ort_session.get_outputs()]
 
 class ResUNet(object):
   """

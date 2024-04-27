@@ -52,6 +52,10 @@ class RootNet(object):
         elif config['Model'] == "ResUNetDS":
             self.unet = ResUNetDS("ResUNetDS", self.finetuneLayers, self.dropout)
             logging.debug("ResUNetDS")
+        elif config["Model"] == "ResUNetDSonnx":
+            self.unet = ResUNetonnx()
+            logging.debug("ResUNetDSonnx")
+            
         elif config['Model'] == "SegNet":
             self.unet = SegNet("SegNet", self.finetuneLayers, self.dropout)
             logging.debug("SegNet")
@@ -61,55 +65,58 @@ class RootNet(object):
         else:
             logging.debug("NO MODEL")
             raise Exception("NO MODEL")
-
-        # Input image
-        self.x = tf.compat.v1.placeholder(tf.float32, imShape, name='x')
-
-        # GT Image
-        self.y = tf.compat.v1.placeholder(tf.float32, gtShape, name='y')
-
-        #self.learning_rate = config['learning_rate']
-        # logging.debug("Learning Rate")
-        # logging.debug(self.learning_rate)
-        self.learning_rate = tf.compat.v1.placeholder(tf.float32, name='learning_rate')
-
-        if config['Model'] == "ResUNetDS" or config['Model'] == "ResUNetDS2":
-            self.output, self.m_logits = self.unet(self.x, isTrain=self.phase)
-        else:
-            self.output = self.unet(self.x, isTrain=self.phase)
         
-        self.logits = pixel_wise_softmax(self.output)
+        if config["Model"] != "ResUNetDSonnx":
+            # Input image
+            self.x = tf.compat.v1.placeholder(tf.float32, imShape, name='x')
 
-        if self.isTrain:
-            regularizer = tf.add_n([tf.nn.l2_loss(v) for v in self.unet.varList if 'bias' not in v.name])
+            # GT Image
+            self.y = tf.compat.v1.placeholder(tf.float32, gtShape, name='y')
 
-            if config['loss'] == "cross_entropy":
-                self.loss = -tf.reduce_mean(self.y*tf.math.log(tf.clip_by_value(self.logits,1e-10,1.0)), name="cross_entropy")
+            #self.learning_rate = config['learning_rate']
+            # logging.debug("Learning Rate")
+            # logging.debug(self.learning_rate)
+            self.learning_rate = tf.compat.v1.placeholder(tf.float32, name='learning_rate')
+
+            if config['Model'] == "ResUNetDS" or config['Model'] == "ResUNetDS2":
+                self.output, self.m_logits = self.unet(self.x, isTrain=self.phase)
             else:
-                self.soft_dice = (1 - dice_coe_c1(self.logits, self.y))
-                self.loss = self.soft_dice
+                self.output = self.unet(self.x, isTrain=self.phase)
             
-            if config['Model'] == "ResUNetDS" or config['Model'] == "ResUNetDS2" :
-                self.m_loss = -tf.reduce_mean(self.y*tf.math.log(tf.clip_by_value(self.m_logits,1e-10,1.0)), name="cross_entropy_b")
-                self.loss = config['lambda2'] * self.loss +  config['lambda1'] * self.m_loss
+            self.logits = pixel_wise_softmax(self.output)
+
+            if self.isTrain:
+                regularizer = tf.add_n([tf.nn.l2_loss(v) for v in self.unet.varList if 'bias' not in v.name])
+
+                if config['loss'] == "cross_entropy":
+                    self.loss = -tf.reduce_mean(self.y*tf.math.log(tf.clip_by_value(self.logits,1e-10,1.0)), name="cross_entropy")
+                else:
+                    self.soft_dice = (1 - dice_coe_c1(self.logits, self.y))
+                    self.loss = self.soft_dice
+                
+                if config['Model'] == "ResUNetDS" or config['Model'] == "ResUNetDS2" :
+                    self.m_loss = -tf.reduce_mean(self.y*tf.math.log(tf.clip_by_value(self.m_logits,1e-10,1.0)), name="cross_entropy_b")
+                    self.loss = config['lambda2'] * self.loss +  config['lambda1'] * self.m_loss
+                
+                
+                self.loss_f = self.loss + config["l2"] * regularizer
+                
+                #self.auc = tf.compat.v1.metrics.auc(self.y[:,:,:,1], self.logits[:,:,:,1], summation_method='careful_interpolation')
+                #self.precision = tf.compat.v1.metrics.precision_at_thresholds(self.y[:,:,:,1], self.logits[:,:,:,1],[0.5])
+                #self.recall = tf.compat.v1.metrics.recall_at_thresholds(self.y[:,:,:,1], self.logits[:,:,:,1],[0.5])
+
+                update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
+
+                with tf.control_dependencies(update_ops):
+                    optim = tf.compat.v1.train.AdamOptimizer(name="optim", learning_rate=self.learning_rate)
+                    self.train = optim.minimize(self.loss_f, var_list=self.unet.varList)
+
+            self.sess.run(tf.group(tf.compat.v1.global_variables_initializer(), tf.compat.v1.local_variables_initializer()))
+
+            if len(self.summaryComponents) > 1:
+                self.summary = tf.compat.v1.summary.merge(self.summaryComponents)
+                
             
-            
-            self.loss_f = self.loss + config["l2"] * regularizer
-            
-            #self.auc = tf.compat.v1.metrics.auc(self.y[:,:,:,1], self.logits[:,:,:,1], summation_method='careful_interpolation')
-            #self.precision = tf.compat.v1.metrics.precision_at_thresholds(self.y[:,:,:,1], self.logits[:,:,:,1],[0.5])
-            #self.recall = tf.compat.v1.metrics.recall_at_thresholds(self.y[:,:,:,1], self.logits[:,:,:,1],[0.5])
-
-            update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
-
-            with tf.control_dependencies(update_ops):
-                optim = tf.compat.v1.train.AdamOptimizer(name="optim", learning_rate=self.learning_rate)
-                self.train = optim.minimize(self.loss_f, var_list=self.unet.varList)
-
-        self.sess.run(tf.group(tf.compat.v1.global_variables_initializer(), tf.compat.v1.local_variables_initializer()))
-
-        if len(self.summaryComponents) > 1:
-            self.summary = tf.compat.v1.summary.merge(self.summaryComponents)
 
 
     def fit(self, batchX, batchY, learning_rate, summary=None, phase=1):
