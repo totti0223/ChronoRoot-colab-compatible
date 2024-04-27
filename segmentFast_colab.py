@@ -106,7 +106,7 @@ def SegmentUNet(conf, input_dir, output_dir, crf):
             data, name = Provider(1)
 
         # segment = net.segment(data)
-        segment = ort_session.run(output_names, {input_names[0]: data})[0]
+        segment = ort_session.run(output_names, {input_names[0]: data.astype(np.float32)})[0]
         
         if crf:
             image = cv2.cvtColor((data[0,:,:,0]*255).astype('uint8'), cv2.COLOR_GRAY2RGB)
