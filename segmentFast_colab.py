@@ -26,7 +26,7 @@ from rootNet.Provider import DataProvider
 import nibabel as nib
 import cv2
 import argparse
-import pydensecrf.densecrf as dcrf
+#import pydensecrf.densecrf as dcrf
 import onnxruntime as ort
 
 # from tensorflow.python.util import deprecation
@@ -108,27 +108,27 @@ def SegmentUNet(conf, input_dir, output_dir, crf):
         # segment = net.segment(data)
         segment = ort_session.run(output_names, {input_names[0]: data.astype(np.float32)})[0]
         
-        if crf:
-            image = cv2.cvtColor((data[0,:,:,0]*255).astype('uint8'), cv2.COLOR_GRAY2RGB)
-            image = np.ascontiguousarray(image)
+        # if crf:
+        #     image = cv2.cvtColor((data[0,:,:,0]*255).astype('uint8'), cv2.COLOR_GRAY2RGB)
+        #     image = np.ascontiguousarray(image)
             
-            label_1 = np.transpose(segment[0,:,:,:], (2,0,1))
-            unary = -np.log(np.clip(label_1,1e-5,1.0))
-            c, h, w = unary.shape
-            unary = unary.transpose(0, 2, 1)
-            unary = unary.reshape(2, -1)
-            unary = np.ascontiguousarray(unary)
+        #     label_1 = np.transpose(segment[0,:,:,:], (2,0,1))
+        #     unary = -np.log(np.clip(label_1,1e-5,1.0))
+        #     c, h, w = unary.shape
+        #     unary = unary.transpose(0, 2, 1)
+        #     unary = unary.reshape(2, -1)
+        #     unary = np.ascontiguousarray(unary)
             
-            denseCRF = dcrf.DenseCRF2D(w, h, 2)
-            denseCRF.setUnaryEnergy(unary)  
-            denseCRF.addPairwiseBilateral(sxy=5, srgb=3, rgbim=image, compat=1)
+        #     denseCRF = dcrf.DenseCRF2D(w, h, 2)
+        #     denseCRF.setUnaryEnergy(unary)  
+        #     denseCRF.addPairwiseBilateral(sxy=5, srgb=3, rgbim=image, compat=1)
             
-            q = denseCRF.inference(1)
-            crf_map = np.array(q).reshape(2, w, h).transpose(2, 1, 0)
+        #     q = denseCRF.inference(1)
+        #     crf_map = np.array(q).reshape(2, w, h).transpose(2, 1, 0)
                     
-            accum = conf['Alpha'] * accum + crf_map[:,:,1]
-        else:
-            accum = conf['Alpha'] * accum + segment[0,:,:,1]
+        #     accum = conf['Alpha'] * accum + crf_map[:,:,1]
+        # else:
+        accum = conf['Alpha'] * accum + segment[0,:,:,1]
         
         _, outimg = cv2.threshold(accum, conf['Thresh'], 1.0, cv2.THRESH_BINARY)
         SaveSegImage(conf, name, outimg, output_dir, ".png", True)
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', default="ResUNetDSonnx", metavar='M', help="ResUNetDSonnx only")
-    parser.add_argument('--use_crf', action='store_true', default=False, help='no CRF post-processing')
+    #parser.add_argument('--use_crf', action='store_true', default=False, help='no CRF post-processing')
     parser.add_argument('--output_dir', type=str, help='Output directory', nargs="?")
     parser.add_argument('input_dir', type=str, help='Input directory', nargs="?")
 
